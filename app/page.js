@@ -8,7 +8,7 @@ const Home = () => {
     <div>
       <div className="d-flex mb-2">
         <Link className="btn btn-primary" href="../add/">
-          Add Product
+          Add Product Tama CRUD
         </Link>
       </div>
       <div>
