@@ -1,42 +1,50 @@
-name: Build & Deploy to Cloud Run
+name: Build & Deploy to Azure App Service
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  deploy:
+  build-and-deploy:
+    name: Build and Deploy Application
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Google Auth
-        id: auth
-        uses: google-github-actions/auth@v2
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+      - name: Install dependencies
+        run: npm install
 
-      - name: Configure Docker Client
+      - name: Build Next.js application
+        run: npm run build
+        env:
+          NODE_ENV: production
+          MONGODB_URL: ${{ secrets.MONGODB_URL }}
+
+      - name: Create deployment package
         run: |
-          gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+          mkdir -p deployment-package
+          cp -r .next deployment-package/
+          cp -r public deployment-package/ 2>/dev/null || true
+          cp package.json deployment-package/
+          cp next.config.js deployment-package/ 2>/dev/null || true
 
-      - name: Build and Push Docker Image
-        run: |
-          IMAGE_PATH="${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/pso-crud:latest"
-          docker build -t $IMAGE_PATH .
-          docker push $IMAGE_PATH
+      - name: Install deployement package
+        working-directory: deployment-package
+        run: npm install --omit=dev
 
-      - name: Deploy to Cloud Run
-        run: |
-          IMAGE_PATH="${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/pso-crud:latest"
-          gcloud run deploy pso-crud \
-            --image $IMAGE_PATH \
-            --region ${{ secrets.GCP_REGION }} \
-            --allow-unauthenticated \
-            --set-env-vars MONGODB_URL="mongodb+srv://hammamaditama_db_user:bIK77XDg6nw2kaAM@cluster0.upogqxx.mongodb.net/?appName=Cluster0"
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'pso-group-sea'
+          slot-name: 'Production'
+          package: deployment-package
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
